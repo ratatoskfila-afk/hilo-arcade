@@ -1,0 +1,17 @@
+{
+  "name": "hilo-arcade-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoritative Node + WebSocket server for HI-LO ARCADE online multiplayer (rooms, drills, shared table).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

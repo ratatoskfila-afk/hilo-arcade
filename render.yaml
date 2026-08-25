@@ -1,0 +1,13 @@
+# Render.com blueprint — deploys the HI-LO ARCADE server as a WebSocket-capable web service.
+# In Render: New + > Blueprint > point at this repo. Render auto-detects this file.
+services:
+  - type: web
+    name: hilo-arcade
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
