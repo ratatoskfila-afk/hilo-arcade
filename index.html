@@ -248,14 +248,20 @@
   .pqFb.ok{color:var(--green)} .pqFb.no{color:var(--red)}
 
   /* ---------- ONLINE TABLE ---------- */
-  #onlTable{text-align:left}
-  .otHead{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; border-bottom:2px solid var(--line); padding-bottom:10px}
-  .otRoom{font-family:var(--pix); font-size:10px; color:var(--muted)} .otRoom b{color:var(--yellow)}
-  .otCountPanel{display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:15px; color:var(--muted)}
-  .otCountPanel b{color:var(--cyan); font-family:var(--pix); font-size:12px}
+  #onlTable{width:100%}
+  .otWrap{display:grid; grid-template-columns:1fr 300px; gap:16px}
+  @media(max-width:900px){.otWrap{grid-template-columns:1fr}}
+  .otSide{display:flex; flex-direction:column; gap:14px}
+  .otTitle{font-family:var(--pix); font-size:12px; color:var(--yellow); margin-bottom:8px}
+  .otTitle span{color:var(--muted); font-size:9px}
+  .otTurn{font-family:var(--pix); font-size:12px; color:var(--cyan); min-height:16px; text-align:center; margin:4px 0}
+  .otTurn.you{color:var(--green); animation:blink 1s steps(1) infinite}
   .otc.hidden{color:var(--muted); opacity:.6}
-  .otCountPanel button{padding:6px 8px; font-size:9px}
-  #otControls .betctl,#otControls .seatbet{margin:0}
+  #otControls .seatbet{margin:0}
+  .hand.win{border-color:var(--green); box-shadow:0 0 10px rgba(57,255,20,.35)}
+  .hand.lose{border-color:var(--red)}
+  .hand.push{border-color:var(--muted)}
+  .hand.bj{border-color:var(--yellow); box-shadow:0 0 12px rgba(255,208,0,.45)}
 
   @media(max-width:560px){
     .hero .logo{font-size:22px} header h1{font-size:11px}
@@ -402,7 +408,7 @@
 
 <!-- ============ ONLINE (rooms + live races) ============ -->
 <section class="screen" id="screen-online">
-  <div class="stage">
+  <div class="stage" id="onlStage">
     <!-- file:// warning -->
     <div id="onlFileWarn" style="display:none">
       <div class="bigask">⚠ ONLINE NEEDS THE SERVER</div>
@@ -462,33 +468,59 @@
       </div>
     </div>
 
-    <!-- online blackjack table -->
-    <div id="onlTable" style="display:none; width:100%">
-      <div class="otHead">
-        <div class="otRoom"><b id="otCode"></b></div>
-        <div class="otCountPanel">
-          <span>COUNT <b class="otc hidden" id="otCount">?</b></span>
-          <span>TRUE <b class="otc hidden" id="otTrue">?</b></span>
-          <span>DECKS <b id="otDecks">6.0</b></span>
-          <label class="tog" style="margin:0"><input type="checkbox" id="otReveal"> reveal</label>
-          <input id="otQuizInput" class="numin" style="width:70px" type="number" placeholder="count?" />
-          <button id="otQuizCheck">CHECK</button>
-          <span class="fb" id="otQuizFb" style="min-height:0"></span>
+  </div>
+
+  <!-- online blackjack table (full-width, own felt) -->
+  <div id="onlTable" style="display:none">
+    <div class="otWrap">
+      <div class="table">
+        <div class="profitbar">
+          <div class="pbCap">PROFIT</div>
+          <div class="pbTrack"><div class="pbZero"></div><div class="pbFill up" id="otpbFill"></div></div>
+          <div class="pbLabel" id="otpbLabel">$0</div>
+        </div>
+        <div class="otTitle"><b id="otCode"></b> <span id="otPhaseLbl"></span></div>
+        <div class="zone">
+          <div class="lbl">DEALER</div>
+          <div class="hands"><div class="hand"><div class="cards" id="otDealer"></div><div class="meta" id="otDealerMeta"></div></div></div>
+        </div>
+        <div class="otTurn" id="otTurn"></div>
+        <div class="msg" id="otMsg"></div>
+        <div class="zone">
+          <div class="lbl">PLAYERS</div>
+          <div class="seatsRow" id="otSeats"></div>
+        </div>
+        <div class="controls" style="margin-top:auto">
+          <div class="coach" id="otCoach"></div>
+          <div class="row" id="otControls"></div>
+          <div class="row"><button class="stop" id="otLeave">LEAVE TABLE</button></div>
         </div>
       </div>
-      <div class="zone" style="margin-top:8px">
-        <div class="lbl">DEALER</div>
-        <div class="hands"><div class="hand"><div class="cards" id="otDealer"></div><div class="meta" id="otDealerMeta"></div></div></div>
-      </div>
-      <div class="msg" id="otMsg"></div>
-      <div class="zone">
-        <div class="lbl">PLAYERS</div>
-        <div class="seatsRow" id="otSeats"></div>
-      </div>
-      <div class="controls" style="margin-top:14px">
-        <div class="row" id="otControls"></div>
-        <div class="row"><button class="stop" id="otLeave">LEAVE TABLE</button></div>
-      </div>
+
+      <aside class="otSide">
+        <div class="panel">
+          <h2>RUNNING COUNT</h2>
+          <div class="countbox hidden" id="otCount">?</div>
+          <div class="sub">
+            <span>TRUE<b class="otc hidden" id="otTrue">?</b></span>
+            <span>DECKS<b id="otDecks">6.0</b></span>
+          </div>
+          <div class="quiz">
+            <input id="otQuizInput" type="number" placeholder="your count?" />
+            <button id="otQuizCheck">CHECK</button>
+          </div>
+          <div class="fb" id="otQuizFb"></div>
+          <label class="tog"><input type="checkbox" id="otReveal"> Reveal count live</label>
+        </div>
+        <div class="panel">
+          <h2>COACH</h2>
+          <label class="tog"><input type="checkbox" id="otCoachOn"> Basic-strategy hint</label>
+        </div>
+        <div class="panel">
+          <h2>Hi-Lo values</h2>
+          <div class="legend"><span class="p">2 3 4 5 6 → +1</span><br><span class="z">7 8 9 → 0</span><br><span class="m">10 J Q K A → −1</span></div>
+        </div>
+      </aside>
     </div>
   </div>
 </section>
@@ -912,6 +944,7 @@ $('speedAnswer').addEventListener('keydown',e=>{ if(e.key==='Enter')submitSpeed(
 /* ============================ ONLINE (rooms + live races) ============================ */
 let ws=null, onlYou=null, onlHost=false, onlCode=null, onlTimerInt=null, onlRoomMode='speed', otState=null;
 function onlShow(view){
+  $('onlStage').style.display    = view==='table' ? 'none' : 'flex';
   $('onlFileWarn').style.display = view==='file' ?'block':'none';
   $('onlConnect').style.display  = view==='connect'?'block':'none';
   $('onlLobby').style.display    = view==='lobby' ?'block':'none';
@@ -1009,18 +1042,30 @@ function renderOnlTable(m){
   otState=m; onlShow('table');
   const host=(m.seats.find(s=>s.pid===m.hostId)||{}).name||'ROOM';
   $('otCode').textContent=host.toUpperCase()+"'S TABLE";
+  $('otPhaseLbl').textContent = m.phase==='betting'?'· place bets' : m.phase==='over'?'· round over' : m.phase==='player'?'· in play' : '· dealer';
   renderCardsInto($('otDealer'), m.dealer.map(c=> c.hidden?{faceUp:false}:{rank:c.rank,suit:c.suit,faceUp:true}));
   $('otDealerMeta').textContent = m.dealerHidden ? ('Showing '+m.dealerTotal) : ('Total '+m.dealerTotal);
   $('otMsg').textContent = m.msg || '';
+  // turn banner
+  const turn=$('otTurn');
+  if(m.phase==='player'){
+    if(m.activePid===onlYou){ turn.textContent='▶ YOUR TURN'; turn.className='otTurn you'; }
+    else { const an=(m.seats.find(s=>s.pid===m.activePid)||{}).name||'…'; turn.textContent='Waiting for '+an+'…'; turn.className='otTurn'; }
+  } else if(m.phase==='betting'){ turn.textContent='Place your bets'; turn.className='otTurn'; }
+  else if(m.phase==='over'){ turn.textContent='Round over'; turn.className='otTurn'; }
+  else { turn.textContent='Dealer playing…'; turn.className='otTurn'; }
+  // seats
   const sr=$('otSeats'); sr.innerHTML='';
   m.seats.forEach(s=>{
     const seatEl=document.createElement('div');
     seatEl.className='seat'+(m.activePid===s.pid && m.phase==='player'?' active':'');
-    const you=s.pid===onlYou?' (you)':''; const off=s.connected?'':' · offline';
+    const you=s.pid===onlYou?' ⭐':''; const off=s.connected?'':' · offline';
     seatEl.innerHTML=`<div class="nm">${s.name}${you}</div><div class="bk">$${s.bankroll} · bet $${s.bet}${off}</div>`;
     s.hands.forEach((h,hi)=>{
       const hEl=document.createElement('div');
-      hEl.className='hand'+(m.activePid===s.pid && m.activeHand===hi && m.phase==='player'?' active':'');
+      let cls='hand'+(m.activePid===s.pid && m.activeHand===hi && m.phase==='player'?' active':'');
+      if(h.result==='win')cls+=' win'; else if(h.result==='lose')cls+=' lose'; else if(h.result==='push')cls+=' push'; else if(h.result==='BJ')cls+=' bj';
+      hEl.className=cls;
       const cd=document.createElement('div'); cd.className='cards'; h.cards.forEach(c=>cd.appendChild(cardEl({rank:c.rank,suit:c.suit,faceUp:true})));
       const meta=document.createElement('div'); meta.className='meta';
       const res=h.result?` — ${h.result==='BJ'?'BLACKJACK 3:2':h.result.toUpperCase()}`:'';
@@ -1029,7 +1074,27 @@ function renderOnlTable(m){
     });
     sr.appendChild(seatEl);
   });
-  otRenderCount(); otRenderControls(m);
+  otRenderCount(); otRenderControls(m); otUpdateProfit(m); otUpdateCoach(m);
+}
+function otUpdateProfit(m){
+  const me=m.seats.find(s=>s.pid===onlYou); if(!me) return;
+  const profit=me.bankroll-START_BANKROLL;
+  const pct=Math.max(-1, Math.min(1, profit/START_BANKROLL));
+  const fill=$('otpbFill'), lab=$('otpbLabel');
+  fill.classList.toggle('up', profit>=0); fill.classList.toggle('down', profit<0);
+  fill.style.height=(Math.abs(pct)*50)+'%';
+  lab.textContent=(profit>=0?'+$'+profit:'-$'+Math.abs(profit)); lab.style.color=profit>=0?'var(--green)':'var(--red)';
+}
+function otUpdateCoach(m){
+  const el=$('otCoach');
+  if(!$('otCoachOn').checked || m.phase!=='player' || m.activePid!==onlYou){ el.textContent=''; return; }
+  const me=m.seats.find(s=>s.pid===onlYou); const h=me&&me.hands[m.activeHand];
+  if(!h){ el.textContent=''; return; }
+  const cards=h.cards.map(c=>({rank:c.rank,suit:c.suit,faceUp:true}));
+  const up=m.dealer.find(c=>!c.hidden); const dUp=up?bjValue(up.rank):0;
+  const canD=cards.length===2 && me.bankroll>=h.bet && !h.fromSplitAce;
+  const canS=cards.length===2 && h.pair && me.bankroll>=h.bet;
+  el.textContent='BASIC STRATEGY: '+basicStrategy(cards, dUp, canD, canS).toUpperCase();
 }
 function otRenderCount(){
   if(!otState)return;
@@ -1079,6 +1144,7 @@ function otRenderControls(m){
   }
 }
 $('otReveal').onchange=otRenderCount;
+$('otCoachOn').onchange=()=>{ if(otState) otUpdateCoach(otState); };
 $('otQuizCheck').onclick=()=>{ if(!otState)return; const v=parseInt($('otQuizInput').value,10); if(Number.isNaN(v))return;
   const ok=v===otState.count.running; const fb=$('otQuizFb');
   fb.textContent= ok?'✓':'✗ '+(otState.count.running>0?'+'+otState.count.running:otState.count.running); fb.className='fb '+(ok?'ok':'no'); flashEl(fb,ok); $('otQuizInput').value=''; };
