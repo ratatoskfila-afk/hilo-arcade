@@ -513,6 +513,13 @@
           <label class="tog"><input type="checkbox" id="otReveal"> Reveal count live</label>
         </div>
         <div class="panel">
+          <h2>SESSION</h2>
+          <div class="sub" style="margin-top:0">
+            <span>WIN / LOSS<b id="otWL">$0</b></span>
+            <span>SHOES PLAYED<b id="otShoes">1</b></span>
+          </div>
+        </div>
+        <div class="panel">
           <h2>COACH</h2>
           <label class="tog"><input type="checkbox" id="otCoachOn"> Basic-strategy hint</label>
         </div>
@@ -1078,12 +1085,15 @@ function renderOnlTable(m){
 }
 function otUpdateProfit(m){
   const me=m.seats.find(s=>s.pid===onlYou); if(!me) return;
-  const profit=me.bankroll-START_BANKROLL;
-  const pct=Math.max(-1, Math.min(1, profit/START_BANKROLL));
+  const net=me.sessionNet||0;                          // true session W/L (survives auto-rebuys)
+  const pct=Math.max(-1, Math.min(1, net/START_BANKROLL));
   const fill=$('otpbFill'), lab=$('otpbLabel');
-  fill.classList.toggle('up', profit>=0); fill.classList.toggle('down', profit<0);
+  fill.classList.toggle('up', net>=0); fill.classList.toggle('down', net<0);
   fill.style.height=(Math.abs(pct)*50)+'%';
-  lab.textContent=(profit>=0?'+$'+profit:'-$'+Math.abs(profit)); lab.style.color=profit>=0?'var(--green)':'var(--red)';
+  const txt=(net>=0?'+$'+net:'-$'+Math.abs(net)), col=net>=0?'var(--green)':'var(--red)';
+  lab.textContent=txt; lab.style.color=col;
+  const wl=$('otWL'); wl.textContent=txt; wl.style.color=col;
+  $('otShoes').textContent = (m.session && m.session.shoes) || 1;
 }
 function otUpdateCoach(m){
   const el=$('otCoach');

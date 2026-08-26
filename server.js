@@ -181,7 +181,7 @@ function tReveal(t, c) { if (!c.faceUp) { c.faceUp = true; if (!c.counted) { t.r
 
 function startTable(room) {
   clearRoomTimers(room);
-  const t = room.table = { phase: 'betting', shoe: [], runningCount: 0, cardsDealt: 0, dealer: [], order: [], seats: new Map(), inSeats: [], activeIdx: 0, activeHand: 0, msg: 'Place your bets — host deals.' };
+  const t = room.table = { phase: 'betting', shoe: [], runningCount: 0, cardsDealt: 0, dealer: [], order: [], seats: new Map(), inSeats: [], activeIdx: 0, activeHand: 0, shoesPlayed: 1, msg: 'Place your bets — host deals.' };
   tBuildShoe(t);
   reconcileSeats(room);
   broadcastTable(room);
@@ -191,7 +191,7 @@ function reconcileSeats(room) {
   const t = room.table;
   for (const pid of [...t.seats.keys()]) if (!room.players.has(pid)) t.seats.delete(pid);
   t.order = t.order.filter(pid => room.players.has(pid));
-  for (const p of room.players.values()) if (!t.seats.has(p.id)) { t.seats.set(p.id, { name: p.name, bankroll: START_BANKROLL, bet: UNIT, hands: [] }); t.order.push(p.id); }
+  for (const p of room.players.values()) if (!t.seats.has(p.id)) { t.seats.set(p.id, { name: p.name, bankroll: START_BANKROLL, bet: UNIT, hands: [], sessionNet: 0 }); t.order.push(p.id); }
 }
 function tSetBet(room, pid, amount) {
   const t = room.table; if (!t || (t.phase !== 'betting' && t.phase !== 'over')) return;
@@ -203,7 +203,7 @@ function tDealRound(room) {
   const t = room.table; if (!t || (t.phase !== 'betting' && t.phase !== 'over')) return;
   reconcileSeats(room);
   let shuffled = false;
-  if (t.shoe.length === 0 || t.cardsDealt >= NUM_DECKS * 52 * PENETRATION) { tBuildShoe(t); shuffled = true; }
+  if (t.shoe.length === 0 || t.cardsDealt >= NUM_DECKS * 52 * PENETRATION) { tBuildShoe(t); shuffled = true; t.shoesPlayed = (t.shoesPlayed || 1) + 1; }
   t.dealer = [];
   const inSeats = t.order.filter(pid => { const s = t.seats.get(pid); return s && s.bet >= UNIT && s.bet <= s.bankroll; });
   if (inSeats.length === 0) { t.msg = 'At least one player needs a bet ≥ $' + UNIT + '.'; broadcastTable(room); return; }
@@ -271,12 +271,14 @@ function tSettle(room, dealerNatural) {
   const t = room.table; tReveal(t, t.dealer[1]); const dv = tHandValue(t.dealer); const dbust = dv.total > 21;
   for (const pid of t.inSeats) { const s = t.seats.get(pid); for (const h of s.hands) {
     const pv = tHandValue(h.cards).total;
-    if (h.natural) { if (dealerNatural) { h.result = 'push'; s.bankroll += h.bet; } else { h.result = 'BJ'; s.bankroll += Math.round(h.bet * 2.5); } continue; }
-    if (dealerNatural) { h.result = 'lose'; continue; }
-    if (pv > 21) { h.result = 'lose'; continue; }
-    if (dbust || pv > dv.total) { h.result = 'win'; s.bankroll += h.bet * 2; }
-    else if (pv < dv.total) { h.result = 'lose'; }
-    else { h.result = 'push'; s.bankroll += h.bet; }
+    let d = 0; // net win/loss for this hand (stake already deducted at deal)
+    if (h.natural) { if (dealerNatural) { h.result = 'push'; s.bankroll += h.bet; d = 0; } else { h.result = 'BJ'; s.bankroll += Math.round(h.bet * 2.5); d = Math.round(h.bet * 1.5); } }
+    else if (dealerNatural) { h.result = 'lose'; d = -h.bet; }
+    else if (pv > 21) { h.result = 'lose'; d = -h.bet; }
+    else if (dbust || pv > dv.total) { h.result = 'win'; s.bankroll += h.bet * 2; d = h.bet; }
+    else if (pv < dv.total) { h.result = 'lose'; d = -h.bet; }
+    else { h.result = 'push'; s.bankroll += h.bet; d = 0; }
+    s.sessionNet = (s.sessionNet || 0) + d;
   } }
   t.phase = 'over'; t.msg = dealerNatural ? 'Dealer blackjack.' : (dbust ? 'Dealer busts.' : 'Dealer ' + dv.total + '.');
   for (const pid of t.inSeats) { const s = t.seats.get(pid); if (s.bankroll < UNIT) s.bankroll = START_BANKROLL; if (s.bet > s.bankroll) s.bet = Math.floor(s.bankroll / 5) * 5; }
@@ -288,7 +290,7 @@ function broadcastTable(room) {
   const seats = t.order.map(pid => {
     const s = t.seats.get(pid);
     return {
-      pid, name: s.name, bankroll: s.bankroll, bet: s.bet,
+      pid, name: s.name, bankroll: s.bankroll, bet: s.bet, sessionNet: s.sessionNet || 0,
       inRound: t.inSeats.includes(pid),
       connected: isConn(room, pid),
       hands: s.hands.map(h => {
@@ -305,7 +307,8 @@ function broadcastTable(room) {
     dealerTotal: tHandValue(t.dealer).total, dealerHidden,
     seats, activePid: t.phase === 'player' ? tActivePid(t) : null, activeHand: t.activeHand,
     hostId: room.hostId,
-    count: { running: t.runningCount, cardsDealt: t.cardsDealt, decksLeft: +(t.shoe.length / 52).toFixed(2) }
+    count: { running: t.runningCount, cardsDealt: t.cardsDealt, decksLeft: +(t.shoe.length / 52).toFixed(2) },
+    session: { shoes: t.shoesPlayed || 1 }
   });
 }
 
