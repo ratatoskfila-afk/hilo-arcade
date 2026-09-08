@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const CLIENT_FILE = path.join(__dirname, 'index.html');
+const GAMES_DIR  = path.join(__dirname, 'games');
 
 /* ------------------------------------------------------------------ HTTP */
 const server = http.createServer((req, res) => {
@@ -26,10 +27,53 @@ const server = http.createServer((req, res) => {
   } else if (url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
+  } else if (url.startsWith('/assets/')) {
+    serveAsset(url, res);
+  } else if (url.startsWith('/games/')) {
+    serveGame(url, res);
   } else {
     res.writeHead(404); res.end('not found');
   }
 });
+
+/* Static assets (images and the like). Paths are resolved
+   under ./assets and rejected if they escape it. */
+const ASSET_DIR = path.join(__dirname, 'assets');
+const MIME = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+};
+/* The arcade cabinets: single-file HTML games in /games, served like assets. */
+function serveGame(url, res) {
+  let rel;
+  try { rel = decodeURIComponent(url.slice('/games/'.length)); }
+  catch { res.writeHead(400); res.end('bad path'); return; }
+  if (!/^[a-z0-9-]+\.html$/.test(rel)) { res.writeHead(404); res.end('not found'); return; }
+  const file = path.join(GAMES_DIR, rel);
+  if (path.relative(GAMES_DIR, file).startsWith('..')) { res.writeHead(403); res.end('forbidden'); return; }
+  fs.readFile(file, (err, buf) => {
+    if (err) { res.writeHead(404); res.end('not found'); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    res.end(buf);
+  });
+}
+
+function serveAsset(url, res) {
+  let rel;
+  try { rel = decodeURIComponent(url.slice('/assets/'.length)); }
+  catch { res.writeHead(400); res.end('bad path'); return; }
+  const file = path.join(ASSET_DIR, rel);
+  if (path.relative(ASSET_DIR, file).startsWith('..') || path.isAbsolute(path.relative(ASSET_DIR, file))) {
+    res.writeHead(403); res.end('forbidden'); return;
+  }
+  const type = MIME[path.extname(file).toLowerCase()];
+  if (!type) { res.writeHead(404); res.end('not found'); return; }
+  fs.readFile(file, (err, buf) => {
+    if (err) { res.writeHead(404); res.end('not found'); return; }
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+    res.end(buf);
+  });
+}
 
 /* --------------------------------------------------------------- Hi-Lo engine */
 const SUITS = ['♠', '♥', '♦', '♣'];

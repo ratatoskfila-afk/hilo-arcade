@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plumb</title>
+<style>
+  :root{ --bg:#0c0b09; --panel:#16140f; --line:#2a2619; --ink:#f0ead9; --dim:#8d8778;
+         --brass:#e0b062; --good:#8fd67a; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 44px}
+  h1{font-size:26px;letter-spacing:.22em;text-transform:uppercase;margin:0 0 2px;font-weight:600}
+  .sub{color:#8d8778;font-size:13px;margin-bottom:16px;text-align:center;max-width:600px}
+  .wrap{width:100%;max-width:680px}
+  .bar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .lvl{letter-spacing:.15em;font-size:12px;text-transform:uppercase;color:#8d8778}
+  .msg{font-size:13px;color:var(--brass);min-height:20px;flex:1;text-align:center}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+  canvas{width:100%;height:auto;display:block;touch-action:manipulation;cursor:pointer}
+  button{background:#221e15;color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:7px 13px;font:inherit;font-size:13px;cursor:pointer}
+  button:hover{border-color:#4a422c}
+  .tray{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+  .tray .lab{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8d8778}
+  .disc{width:52px;height:52px;border-radius:50%;background:#2b2415;border:2px solid var(--brass);
+    color:var(--brass);display:flex;align-items:center;justify-content:center;font-size:15px;
+    font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
+  .disc:hover{background:#3a3019}
+  .disc.sel{background:var(--brass);color:#16140f;transform:scale(1.08)}
+  .disc.gone{opacity:.18;pointer-events:none}
+  .keys{margin-top:14px;color:#8d8778;font-size:12px;text-align:center}
+  a{color:#8d8778}
+  @media (max-width:700px){
+    body{padding:14px 10px 30px} h1{font-size:21px} .sub{font-size:12px;margin-bottom:12px}
+    .stage{padding:8px} .disc{width:46px;height:46px} .keys{font-size:11px}
+  }
+</style>
+</head>
+<body>
+<h1>Plumb</h1>
+<div class="sub">A hanging mobile, missing some of its weights. A bar hangs level only when the weight
+on one side times its arm equals the weight on the other times its arm — and every bar hangs from
+another bar, so nothing settles until all of it does. Hang a weight and watch it swing through:
+bars tip the moment the load changes, and the whole mobile below them goes with it.</div>
+
+<div class="wrap">
+  <div class="bar">
+    <div class="lvl" id="lvlLabel">Mobile 1</div>
+    <div class="msg" id="msg"></div>
+    <div>
+      <button id="resetBtn">Clear</button>
+      <button id="solveBtn">Solution</button>
+    </div>
+  </div>
+
+  <div class="stage"><canvas id="cv" width="680" height="520"></canvas></div>
+
+  <div class="tray">
+    <span class="lab">Tray</span>
+    <div id="discs" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+  </div>
+
+  <div class="keys">
+    pick a weight, then click an empty hook &middot; click a hung weight to take it back &middot;
+    <a href="/" target="_top">back to the arcade</a>
+  </div>
+</div>
+
+<script>
+/* Mobiles are generated balanced and then broken. A balanced bar with arms L,R carries weight R on
+   the left and L on the right, so any balanced sub-mobile under a bar has unit total (L+R) whatever
+   its shape — scaling a child divides by that. Weights are derived from the arm lengths that way,
+   so the mobile provably hangs level; then some are lifted off and every way of putting the tray
+   back is brute-forced, keeping only puzzles with exactly one answer. */
+const LEVELS = [
+  { name:"Plumb Line", hooks:3,
+    tray:[3,15],
+    answer:[3,2,15],
+    tree:{t:'bar',L:3,R:1,l:{t:'bar',L:2,R:3,l:{t:'w',v:0},r:{t:'w',v:2}},r:{t:'w',v:0}} },
+  { name:"Crossbar", hooks:4,
+    tray:[3,4],
+    answer:[3,1,4,24],
+    tree:{t:'bar',L:3,R:1,l:{t:'bar',L:1,R:1,l:{t:'bar',L:1,R:3,l:{t:'w',v:0},r:{t:'w',v:1}},r:{t:'w',v:0}},r:{t:'w',v:24}} },
+  { name:"Cascade", hooks:6,
+    tray:[5,15,72],
+    answer:[15,30,5,10,72,108],
+    tree:{t:'bar',L:3,R:1,l:{t:'bar',L:1,R:3,l:{t:'bar',L:2,R:1,l:{t:'w',v:0},r:{t:'w',v:30}},r:{t:'bar',L:2,R:1,l:{t:'w',v:0},r:{t:'w',v:10}}},r:{t:'bar',L:3,R:2,l:{t:'w',v:0},r:{t:'w',v:108}}} },
+  { name:"Counterpoise", hooks:8,
+    tray:[27,36,40],
+    answer:[27,18,18,27,80,40,36,24],
+    tree:{t:'bar',L:2,R:1,l:{t:'bar',L:3,R:3,l:{t:'bar',L:2,R:3,l:{t:'w',v:27},r:{t:'w',v:18}},r:{t:'bar',L:3,R:2,l:{t:'w',v:18},r:{t:'w',v:0}}},r:{t:'bar',L:1,R:2,l:{t:'bar',L:1,R:2,l:{t:'w',v:80},r:{t:'w',v:0}},r:{t:'bar',L:2,R:3,l:{t:'w',v:0},r:{t:'w',v:24}}}} },
+  { name:"The Orrery", hooks:10,
+    tray:[40,90,90],
+    answer:[90,12,18,40,10,10,90,45,45,180],
+    tree:{t:'bar',L:2,R:1,l:{t:'bar',L:1,R:2,l:{t:'bar',L:1,R:3,l:{t:'w',v:0},r:{t:'bar',L:3,R:2,l:{t:'w',v:12},r:{t:'w',v:18}}},r:{t:'bar',L:1,R:2,l:{t:'w',v:0},r:{t:'bar',L:2,R:2,l:{t:'w',v:10},r:{t:'w',v:10}}}},r:{t:'bar',L:3,R:3,l:{t:'bar',L:3,R:3,l:{t:'w',v:0},r:{t:'bar',L:3,R:3,l:{t:'w',v:45},r:{t:'w',v:45}}},r:{t:'w',v:180}}} },
+  { name:"Equilibrium", hooks:13,
+    tray:[25,36,40,60],
+    answer:[36,54,40,20,60,40,25,25,60,180,72,48,240],
+    tree:{t:'bar',L:2,R:1,l:{t:'bar',L:3,R:3,l:{t:'bar',L:2,R:3,l:{t:'bar',L:3,R:2,l:{t:'w',v:0},r:{t:'w',v:54}},r:{t:'bar',L:1,R:2,l:{t:'w',v:40},r:{t:'w',v:20}}},r:{t:'bar',L:1,R:2,l:{t:'bar',L:2,R:3,l:{t:'w',v:60},r:{t:'w',v:0}},r:{t:'bar',L:1,R:1,l:{t:'w',v:0},r:{t:'w',v:25}}}},r:{t:'bar',L:2,R:3,l:{t:'bar',L:1,R:2,l:{t:'bar',L:3,R:1,l:{t:'w',v:0},r:{t:'w',v:180}},r:{t:'bar',L:2,R:3,l:{t:'w',v:72},r:{t:'w',v:48}}},r:{t:'w',v:240}}} },
+];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const W = cv.width;
+let H = cv.height;
+
+let li = 0, tree = null, tray = [], taken = [], sel = -1, hooks = [], solved = false;
+
+function clone(n){
+  return n.t === 'w' ? {t:'w', v:n.v, fixed:n.v > 0}
+                     : {t:'bar', L:n.L, R:n.R, ang:0, angV:0, swing:0, swingV:0,
+                        l:clone(n.l), r:clone(n.r)};
+}
+
+function loadLevel(i){
+  li = i;
+  tree = clone(LEVELS[i].tree);
+  tray = LEVELS[i].tray.slice();
+  taken = tray.map(() => false);
+  sel = -1; solved = false;
+  document.getElementById('lvlLabel').textContent =
+    'Mobile ' + (i+1) + ' / ' + LEVELS.length + ' · ' + LEVELS[i].name;
+  const spanOf = n => n.t === 'w' ? 0 : Math.max(n.L + spanOf(n.l), n.R + spanOf(n.r));
+  const depthOf = n => n.t === 'w' ? 0 : 1 + Math.max(depthOf(n.l), depthOf(n.r));
+  const armOf = n => n.t === 'w' ? 0 : Math.max(n.L, n.R, armOf(n.l), armOf(n.r));
+  const depth = Math.max(1, depthOf(tree));
+  // swing pushes children sideways too, so leave more room than the level layout needs
+  UNIT = Math.min(34, (W/2 - 72) / Math.max(1, spanOf(tree)));
+  DROP = 74;
+  const lean = Math.sin(MAXTILT) * armOf(tree) * UNIT;      // extra drop per tilted level
+  cv.height = H = Math.round(110 + depth * (DROP + lean) + 50);
+  buildTray();
+  say('Hang every weight so all ' + countBars(tree) + ' bars sit level.');
+}
+
+function countBars(n){ return n.t === 'w' ? 0 : 1 + countBars(n.l) + countBars(n.r); }
+function total(n){ return n.t === 'w' ? n.v : total(n.l) + total(n.r); }
+function torque(n){ return n.t === 'w' ? 0 : total(n.l) * n.L - total(n.r) * n.R; }
+
+function complete(n){
+  return n.t === 'w' ? n.v > 0 : complete(n.l) && complete(n.r);
+}
+function levelled(n){
+  if (n.t === 'w') return true;
+  return torque(n) === 0 && levelled(n.l) && levelled(n.r);
+}
+
+function say(t){ document.getElementById('msg').textContent = t; }
+
+function buildTray(){
+  const host = document.getElementById('discs');
+  host.innerHTML = '';
+  tray.forEach((v, k) => {
+    const d = document.createElement('div');
+    d.className = 'disc' + (taken[k] ? ' gone' : '') + (sel === k ? ' sel' : '');
+    d.textContent = v;
+    d.onclick = () => { sel = (sel === k ? -1 : k); buildTray(); };
+    host.appendChild(d);
+  });
+}
+
+function check(){
+  if (complete(tree) && levelled(tree)){
+    solved = true;
+    say('Balanced. Every bar is level.');
+  } else if (complete(tree)){
+    const off = countOff(tree);
+    say(off + ' bar' + (off === 1 ? '' : 's') + ' still tilting.');
+  } else {
+    say('Hang every weight so all ' + countBars(tree) + ' bars sit level.');
+  }
+}
+function countOff(n){
+  if (n.t === 'w') return 0;
+  return (torque(n) !== 0 ? 1 : 0) + countOff(n.l) + countOff(n.r);
+}
+
+/* ---------- layout & draw ---------- */
+let UNIT = 34, DROP = 74;
+const MAXTILT = 0.38;          // radians at full imbalance
+const STIFF = 52, DAMP = 8.2;  // underdamped, so a bar overshoots and settles like a real one
+const SUB = 1/120;             // spring substep, independent of frame rate
+
+/* How far out of balance this bar is, as -1..1. An empty hook counts as zero weight, so a bar
+   starts fully tipped and rights itself as you load the light side. */
+function imbalance(node){
+  const a = total(node.l) * node.L, b = total(node.r) * node.R;
+  if (a + b === 0) return 0;
+  return (b - a) / (a + b);
+}
+
+function relax(node, dt){
+  if (node.t === 'w') return;
+  const target = MAXTILT * imbalance(node);
+  node.angV += ((target - node.ang) * STIFF - node.angV * DAMP) * dt;
+  node.ang  += node.angV * dt;
+  // the strings below lag behind the bar's motion, which is where the life comes from
+  const swingTarget = Math.max(-0.3, Math.min(0.3, -node.angV * 0.07));
+  node.swingV += ((swingTarget - node.swing) * 40 - node.swingV * 7) * dt;
+  node.swing  += node.swingV * dt;
+  relax(node.l, dt);
+  relax(node.r, dt);
+}
+
+function layout(node, x, y, out){
+  if (node.t === 'w'){ out.push({node, x, y}); return; }
+  const c = Math.cos(node.ang), sn = Math.sin(node.ang);
+  const lx = x - c * node.L * UNIT, ly = y - sn * node.L * UNIT;
+  const rx = x + c * node.R * UNIT, ry = y + sn * node.R * UNIT;
+  const sw = node.swing, dx = Math.sin(sw) * DROP, dy = Math.cos(sw) * DROP;
+  node._ends = [[lx,ly],[rx,ry]];
+  node._drop = [[lx+dx, ly+dy],[rx+dx, ry+dy]];
+  layout(node.l, lx+dx, ly+dy, out);
+  layout(node.r, rx+dx, ry+dy, out);
+}
+
+let lastFrame = 0, springAcc = 0;
+
+function draw(now){
+  const dt = Math.min(0.05, (now - lastFrame) / 1000 || 0);
+  lastFrame = now;
+  springAcc += dt;
+  let guard = 0;
+  while (springAcc >= SUB && guard++ < 40){ springAcc -= SUB; relax(tree, SUB); }
+
+  ctx.fillStyle = '#100e0a';
+  ctx.fillRect(0, 0, W, H);
+
+  hooks = [];
+  const rootX = W/2, rootY = 66;
+  layout(tree, rootX, rootY, hooks);
+
+  ctx.strokeStyle = '#3a3524'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(rootX - 60, 26); ctx.lineTo(rootX + 60, 26); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rootX, 26); ctx.lineTo(rootX, rootY); ctx.stroke();
+
+  drawNode(tree, rootX, rootY);
+
+  hooks.forEach(h => {
+    const v = h.node.v, fixed = h.node.fixed, r = 21;
+    if (v > 0){
+      ctx.fillStyle = fixed ? '#2b2415' : '#3d3016';
+      ctx.strokeStyle = fixed ? '#8d7a4a' : '#e0b062';
+    } else {
+      ctx.fillStyle = '#171410';
+      ctx.strokeStyle = sel >= 0 ? '#e0b062' : '#4a4230';
+      ctx.setLineDash([4,4]);
+    }
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(h.x, h.y + r, r, 0, 6.29); ctx.fill(); ctx.stroke();
+    ctx.setLineDash([]);
+    if (v > 0){
+      ctx.fillStyle = fixed ? '#c9bda0' : '#e0b062';
+      ctx.font = '600 15px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(v), h.x, h.y + r + 1);
+    }
+    h.r = r;
+  });
+
+  if (solved){
+    ctx.fillStyle = 'rgba(143,214,122,.07)';
+    ctx.fillRect(0, 0, W, H);
+  }
+  requestAnimationFrame(draw);
+}
+
+function drawNode(node, x, y){
+  if (node.t === 'w') return;
+  const ends = node._ends, lc = node._drop[0], rc = node._drop[1];
+  const lx = ends[0][0], ly = ends[0][1], rx = ends[1][0], ry = ends[1][1];
+
+  // colour tracks how level it is, so the mobile reads at a glance
+  const off = Math.abs(imbalance(node));
+  const mix = (a, b, t) => Math.round(a + (b - a) * t);
+  ctx.strokeStyle = 'rgb(' + mix(143,200,off) + ',' + mix(214,118,off) + ',' + mix(122,86,off) + ')';
+  ctx.lineWidth = 3.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ry); ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  ctx.fillStyle = '#e0b062';
+  ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.29); ctx.fill();
+
+  ctx.strokeStyle = '#4a4230'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lc[0], lc[1]); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rc[0], rc[1]); ctx.stroke();
+
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(node.ang);
+  ctx.fillStyle = '#6b6349';
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText(node.L, -node.L * UNIT / 2, -7);
+  ctx.fillText(node.R,  node.R * UNIT / 2, -7);
+  ctx.restore();
+
+  drawNode(node.l, lc[0], lc[1]);
+  drawNode(node.r, rc[0], rc[1]);
+}
+requestAnimationFrame(draw);
+
+/* ---------- input ---------- */
+cv.addEventListener('click', e => {
+  if (solved){
+    if (li < LEVELS.length - 1) loadLevel(li + 1);
+    return;
+  }
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * W / rect.width;
+  const y = (e.clientY - rect.top) * H / rect.height;
+
+  for (const h of hooks){
+    if (Math.hypot(x - h.x, y - (h.y + h.r)) > h.r + 6) continue;
+    if (h.node.fixed) return;                       // part of the puzzle, not yours to move
+    if (h.node.v > 0){                              // take it back down
+      const k = taken.findIndex((t, i) => t && tray[i] === h.node.v);
+      if (k >= 0) taken[k] = false;
+      h.node.v = 0;
+      sel = -1; buildTray(); check();
+      return;
+    }
+    if (sel >= 0 && !taken[sel]){                   // hang the selected weight
+      h.node.v = tray[sel];
+      taken[sel] = true;
+      sel = -1; buildTray(); check();
+    }
+    return;
+  }
+});
+
+function clearAll(){
+  const strip = n => { if (n.t === 'w'){ if (!n.fixed) n.v = 0; } else { strip(n.l); strip(n.r); } };
+  strip(tree);
+  taken = tray.map(() => false);
+  sel = -1; solved = false;
+  buildTray(); check();
+}
+
+function showSolution(){
+  clearAll();
+  const answer = LEVELS[li].answer.slice();
+  let k = 0;
+  const fill = n => {
+    if (n.t === 'w'){ n.v = answer[k++]; return; }
+    fill(n.l); fill(n.r);
+  };
+  fill(tree);
+  taken = tray.map(() => true);
+  buildTray(); check();
+  say('This is the only arrangement that balances.');
+}
+
+addEventListener('keydown', e => {
+  if (e.key === 'r' || e.key === 'R') clearAll();
+  if ((e.key === 'n' || e.key === 'N' || e.key === 'Enter') && solved && li < LEVELS.length-1)
+    loadLevel(li + 1);
+});
+document.getElementById('resetBtn').onclick = clearAll;
+document.getElementById('solveBtn').onclick = showSolution;
+
+loadLevel(0);
+</script>
+</body>
+</html>
