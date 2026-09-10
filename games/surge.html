@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Surge</title>
+<style>
+  :root{
+    --bg:#07060d; --line:#1e1a30; --ink:#eceaf6; --dim:#7a7396;
+    --charge:#ffd24a; --score:#7ae6ff; --danger:#ff4d6d; --good:#8fffc2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px 14px 34px}
+  h1{font-size:28px;letter-spacing:.34em;text-transform:uppercase;margin:0 0 2px;font-weight:700;text-indent:.34em}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:12px;text-align:center;max-width:600px}
+  .wrap{width:100%;max-width:900px}
+
+  .hud{display:flex;align-items:flex-end;gap:18px;margin-bottom:8px;flex-wrap:wrap}
+  .stat{display:flex;flex-direction:column;gap:1px}
+  .stat .k{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .stat .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
+  .stat.score .v{color:var(--score)}
+  .stat.carry .v{color:var(--charge)}
+  .stat.chg .v{font-size:32px;color:var(--charge)}
+  .stat.left .v{color:var(--danger)}
+  .stat.best .v{font-size:17px;color:var(--dim)}
+  .spacer{margin-left:auto}
+
+  .stage{position:relative;background:#05040a;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  canvas{width:100%;height:auto;display:block;touch-action:none;cursor:crosshair}
+
+  .over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:6px;background:rgba(7,6,13,.9);text-align:center;padding:20px}
+  .over.hide{display:none}
+  .over h2{margin:0;font-size:25px;letter-spacing:.2em;text-transform:uppercase;font-weight:700}
+  .over .big{font-size:52px;font-weight:700;color:var(--score);font-variant-numeric:tabular-nums;line-height:1}
+  .over .lost{color:var(--charge);font-size:15px;margin-top:2px}
+  .over .rec{color:var(--good);font-size:13px;letter-spacing:.18em;text-transform:uppercase}
+  .over .hint{color:var(--dim);font-size:13px;margin-top:8px;max-width:520px}
+  .bestiary{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:6px;
+    color:var(--dim);font-size:12px}
+  .bestiary b{font-weight:600}
+  .panel{display:none;flex-direction:column;align-items:center;gap:7px;width:100%}
+  .panel.on{display:flex}
+  .title{font-size:52px;font-weight:700;letter-spacing:.3em;text-indent:.3em;line-height:1;
+    color:var(--charge)}
+  .tagline{color:var(--dim);font-size:13px;max-width:460px;text-align:center}
+  .lvlGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;
+    width:100%;max-width:660px;max-height:308px;overflow-y:auto;padding:2px}
+  .lvlCard{background:#141130;border:1px solid var(--line);border-radius:9px;padding:9px 10px;
+    text-align:left;cursor:pointer;transition:.1s}
+  .lvlCard:hover{border-color:var(--charge);transform:translateY(-1px)}
+  .lvlCard .n{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .lvlCard .nm{font-size:14px;font-weight:600;margin:1px 0 5px}
+  .lvlCard .kinds{display:flex;gap:4px;align-items:center}
+  .lvlCard .kinds i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .lvlCard.locked{opacity:.3;cursor:default;transform:none;border-color:var(--line)}
+  .lvlCard.locked:hover{border-color:var(--line);transform:none}
+  .lvlCard.locked .nm{color:var(--dim)}
+  .btnrow{display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap}
+  button{background:#171430;color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:9px 18px;font:inherit;font-size:13px;cursor:pointer}
+  button:hover{border-color:#3d3663}
+  .rotate{display:none;color:var(--charge);font-size:12px;text-align:center;margin-top:10px}
+  @media (max-width:820px) and (orientation:portrait){ .rotate{display:block} }
+  .touchonly{display:none}
+  @media (pointer:coarse){ .touchonly{display:inline} .keyonly{display:none} }
+
+  .keys{margin-top:12px;color:var(--dim);font-size:12px;text-align:center}
+  kbd{background:#171430;border:1px solid var(--line);border-radius:4px;padding:1px 6px;font:inherit;font-size:11px}
+  a{color:var(--dim)}
+  @media (max-width:700px){
+    body{padding:12px 10px 24px} h1{font-size:20px} .sub{font-size:12px;margin-bottom:10px}
+    .stat .v{font-size:18px} .stat.chg .v{font-size:24px} .hud{gap:12px} .keys{font-size:11px}
+  }
+</style>
+</head>
+<body>
+<h1>Surge</h1>
+<div class="sub">Charge is your score, your body and your only weapon. Discharging kills what it
+reaches and banks what you hold — so every second you hoard is a second the floor fills with things
+you have not killed yet.</div>
+
+<div class="wrap">
+  <div class="hud">
+    <div class="stat lvl"><span class="k">Level</span><span class="v" id="hLevel">1</span></div>
+    <div class="stat score"><span class="k">Banked</span><span class="v" id="hScore">0</span></div>
+    <div class="stat chg"><span class="k">Charge</span><span class="v" id="hCharge">0</span></div>
+    <div class="stat carry"><span class="k">Carrying</span><span class="v" id="hCarry">0</span></div>
+    <div class="stat left"><span class="k">Left</span><span class="v" id="hLeft">0</span></div>
+    <div class="stat"><span class="k">Lives</span><span class="v" id="hLives" style="color:#8fffc2">●●●</span></div>
+    <div class="spacer"></div>
+    <div class="stat best"><span class="k">Best</span><span class="v" id="hBest">0</span></div>
+  </div>
+
+  <div class="stage">
+    <canvas id="cv" width="900" height="560"></canvas>
+    <div class="over" id="over">
+
+      <div class="panel on" id="panelMenu">
+        <div class="title">SURGE</div>
+        <div class="tagline">Charge is your score, your body and your only weapon. Discharging kills
+          what it reaches and banks what you hold — so every second you hoard is a second the floor
+          fills with things you have not killed yet.</div>
+        <div class="rec" id="menuBest"></div>
+        <div class="btnrow">
+          <button id="btnPlay">Play</button>
+          <button id="btnLevels">Levels</button>
+        </div>
+        <div class="bestiary" id="ovBest"></div>
+      </div>
+
+      <div class="panel" id="panelLevels">
+        <h2>Start from</h2>
+        <div class="tagline" id="levelsNote">Levels you have reached are open. Score always starts
+          at zero, so going deep is a choice about difficulty, not a shortcut.</div>
+        <div class="lvlGrid" id="lvlGrid"></div>
+        <div class="btnrow"><button id="btnBackMenu">Back</button></div>
+      </div>
+
+      <div class="panel" id="panelOver">
+      <h2 id="ovTitle">Surge</h2>
+      <div class="big" id="ovScore"></div>
+      <div class="lost" id="ovLost"></div>
+      <div class="rec" id="ovRec"></div>
+      <p class="hint" id="ovHint"><span class="touchonly"><b>Drag anywhere</b> to move,
+        <b>double tap</b> to discharge.</span><span class="keyonly">Move with <b>WASD</b>, the
+        arrows, or by dragging. <b>Space</b> discharges.</span> Discharging destroys everything the blast reaches and banks your charge, worth
+        far more the more it kills at once. Blocks shield them from the blast, and you crawl in the violet
+        fields — which only matters when you are heavy. Three lives: getting caught costs whatever
+        you were carrying and puts you back at the start of the level, not the start of the run.</p>
+      <div class="btnrow">
+        <button id="ovBtn">Again</button>
+        <button id="ovMenu">Menu</button>
+      </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="rotate">Turn your phone sideways — the arena is 8:5, so landscape gives you much
+    more room to run.</div>
+
+  <div class="keys">
+    <span class="touchonly"><b>Drag anywhere</b> to move &middot; <b>double tap</b> to discharge
+      &middot; tap to restart</span>
+    <span class="keyonly"><kbd>WASD</kbd> / <kbd>arrows</kbd> / drag &middot;
+      <kbd>space</kbd> discharge &middot; any key restarts</span>
+    &middot; <a href="/" target="_top">back to the arcade</a>
+  </div>
+</div>
+
+<script>
+/* ============================ sim core ============================
+   Pure state machine: no DOM, no canvas, no timers. The page drives it with real input and
+   check-surge.js drives it with scripted bots, so what gets balanced is what gets played.
+
+   The shape: charge is score, size and ammunition at once. Discharging is the only way to kill,
+   so refusing to discharge means the level's quota keeps arriving and nothing leaves. Hoarding is
+   punished by the enemies you are failing to clear, not by an arbitrary timer.                */
+
+const W = 900, H = 560;
+
+const P = {
+  baseR: 9, rPerCharge: 0.42, rQuad: 0.0065,   // size grows FASTER than the charge does:
+                                               // the last ten points cost far more than the first
+  speed: 272, slowPerCharge: 0.0068, maxSlow: 0.42,
+  fieldSlow: 0.46,                 // violet fields: crippling when heavy, nothing when empty
+
+  motesWanted: 9, moteR: 8, moteEvery: 0.26, moteWorth: 2, magnet: 125, magnetPull: 340,
+  grazeWorth: 2,                   // grazing pays double: it is the income you take risk for
+  grazeBand: 16, grazeSlowT: 0.13, grazeSlowF: 0.62,
+
+  windupBase: 0.16, windupPerCharge: 0.009, windupQuad: 0.00018,
+  invuln: 0.45,
+  shockBase: 72, shockPerCharge: 5.0, shockMax: 250, shockPush: 250,
+                                 // the blast TOPS OUT: past ~36 charge, holding buys
+                                 // you no more reach, only more score and more danger
+  killBonus: 0.35,                 // each kill in one blast multiplies that blast's payout
+
+  spawnBase: 0.82, spawnPerLevel: 0.038, spawnMin: 0.30,
+  spawnPerCharge: 0.055,           // what you carry is what draws them: the wave arrives
+                                   // faster the longer you hold, so time spent fat is the cost
+  breather: 2.4,
+  runCap: 600
+};
+
+/* ---- the bestiary; each asks a different question ---- */
+const KIND = {
+  hunter:  { r:8,  speed:96,  home:118, drag:1.15, armor:0,  col:'#ff4d6d' },
+  darter:  { r:7,  speed:78,  home:52,  drag:1.9,  armor:0,  col:'#ff9b3d',
+             dashEvery:1.9, dashSpeed:560, dashWind:0.42, dashTime:0.6 },
+  splitter:{ r:13, speed:70,  home:86,  drag:1.2,  armor:0,  col:'#c46dff', splits:2 },
+  shard:   { r:6,  speed:132, home:150, drag:1.0,  armor:0,  col:'#e0aaff' },
+  warden:  { r:15, speed:58,  home:74,  drag:1.3,  armor:14, col:'#7ae6ff' }
+};
+
+/* ---- arenas: blocks stop you and shield them; fields only bite when you are fat ---- */
+const LAYOUTS = [
+  { blocks:[], fields:[] },
+  { blocks:[[300,150,50,260],[550,150,50,260]], fields:[] },
+  { blocks:[[120,90,180,40],[600,430,180,40]], fields:[[450,280,110]] },
+  { blocks:[[410,80,80,150],[410,330,80,150]], fields:[[190,140,95],[710,420,95]] },
+  { blocks:[[220,240,90,90],[590,240,90,90]], fields:[[450,80,90],[450,480,90]] },
+  { blocks:[[100,270,240,36],[560,270,240,36],[430,60,40,120],[430,380,40,120]],
+    fields:[[450,280,120]] },
+  { blocks:[[260,120,40,320],[600,120,40,320]], fields:[[140,280,100],[760,280,100]] }
+];
+
+const LEVELS = [
+  { name:'Contact',     layout:0, wave:[['hunter',4]] },
+  { name:'Pillars',     layout:1, wave:[['hunter',5]] },
+  { name:'Darters',     layout:0, wave:[['hunter',3],['darter',2]] },
+  { name:'Splitters',   layout:1, wave:[['hunter',3],['splitter',2]] },
+  { name:'The Warden',  layout:3, wave:[['hunter',4],['warden',1]] },
+  { name:'Wet Ground',  layout:2, wave:[['hunter',4],['darter',2],['splitter',1]] },
+  { name:'Crossfire',   layout:4, wave:[['hunter',4],['darter',3],['splitter',1]] },
+  { name:'The Narrows', layout:5, wave:[['hunter',5],['darter',2],['warden',1]] },
+  { name:'Bloom',       layout:2, wave:[['splitter',3],['darter',2]] },
+  { name:'Two Wardens', layout:6, wave:[['hunter',5],['warden',2],['darter',2]] },
+  { name:'The Yard',    layout:5, wave:[['hunter',6],['splitter',2],['darter',3]] },
+  { name:'Deep Water',  layout:3, wave:[['hunter',6],['splitter',2],['warden',2],['darter',3]] }
+];
+
+function levelSpec(L){
+  if (L <= LEVELS.length){
+    const b = LEVELS[L-1];
+    return { name:b.name, layout:LAYOUTS[b.layout], wave:b.wave };
+  }
+  const over = L - LEVELS.length;                    // endless: recycle arenas, thicken the mix
+  return {
+    name: 'Deeper ' + over,
+    layout: LAYOUTS[(L * 3) % LAYOUTS.length],
+    wave: [
+      ['hunter',   7 + Math.floor(over * 0.9)],
+      ['darter',   3 + Math.floor(over * 0.6)],
+      ['splitter', 2 + Math.floor(over * 0.4)],
+      ['warden',   1 + Math.floor(over * 0.3)]
+    ]
+  };
+}
+
+function rand(S){
+  S.seed |= 0; S.seed = S.seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(S.seed ^ S.seed >>> 15, 1 | S.seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+
+const playerR = c => P.baseR + c * P.rPerCharge + c * c * P.rQuad;
+const worth   = c => Math.round(Math.pow(c, 1.5) * 12);
+const shockR  = c => Math.min(P.shockMax, P.shockBase + c * P.shockPerCharge);
+
+function newRun(seed, from){
+  const S = {
+    seed: seed >>> 0, t: 0,
+    x: 80, y: 80, vx:0, vy:0,
+    charge: 0, score: 0,
+    foes: [], motes: [], queue: [], blocks: [], fields: [],
+    level: 0, levelName: '', phase: 'fight', breatherT: 0,
+    spawnIn: 0, moteIn: 0,
+    windT: 0, invulnT: 0, slowT: 0,
+    dead: false, deathCharge: 0,
+    lives: 3, deaths: 0, retryT: 0, lastLoss: 0,
+    peakCharge: 0, grazes: 0, banks: 0, kills: 0, bestBlast: 0,
+    shock: null, popped: []
+  };
+  startLevel(S, Math.max(1, from || 1));
+  return S;
+}
+
+function startLevel(S, L){
+  const spec = levelSpec(L);
+  S.level = L;
+  S.levelName = spec.name;
+  S.blocks = spec.layout.blocks.map(b => ({x:b[0], y:b[1], w:b[2], h:b[3]}));
+  S.fields = spec.layout.fields.map(f => ({x:f[0], y:f[1], r:f[2]}));
+  S.queue = [];
+  for (const pair of spec.wave) for (let i = 0; i < pair[1]; i++) S.queue.push(pair[0]);
+  for (let i = S.queue.length - 1; i > 0; i--){        // interleave the kinds
+    const j = Math.floor(rand(S) * (i+1));
+    const tmp = S.queue[i]; S.queue[i] = S.queue[j]; S.queue[j] = tmp;
+  }
+  S.spawnIn = 0.8;
+  S.phase = 'fight';
+  for (const b of S.blocks){                          // never stand inside a new wall
+    if (S.x > b.x - 26 && S.x < b.x + b.w + 26 && S.y > b.y - 26 && S.y < b.y + b.h + 26){
+      S.x = 60; S.y = 60;
+    }
+  }
+}
+
+/* segment vs axis-aligned rect: the blast does not go through walls */
+function segRect(ax, ay, bx, by, r){
+  const x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h;
+  if (ax > x0 && ax < x1 && ay > y0 && ay < y1) return true;
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dy = by - ay;
+  const slabs = [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]];
+  for (const s of slabs){
+    const p = s[0], q = s[1];
+    if (p === 0){ if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0){ if (t > t1) return false; if (t > t0) t0 = t; }
+    else       { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return true;
+}
+function shielded(S, ax, ay, bx, by){
+  for (const b of S.blocks) if (segRect(ax, ay, bx, by, b)) return true;
+  return false;
+}
+
+function pushOutOfBlocks(S, o, r){
+  for (const b of S.blocks){
+    const nx = Math.max(b.x, Math.min(o.x, b.x + b.w));
+    const ny = Math.max(b.y, Math.min(o.y, b.y + b.h));
+    const dx = o.x - nx, dy = o.y - ny, d = Math.hypot(dx, dy);
+    if (d >= r) continue;
+    if (d === 0){ o.x = b.x - r; continue; }
+    o.x += dx/d * (r - d);
+    o.y += dy/d * (r - d);
+  }
+}
+
+function inField(S, x, y){
+  for (const f of S.fields) if (Math.hypot(x - f.x, y - f.y) < f.r) return true;
+  return false;
+}
+
+function spawnFoe(S, kind){
+  const K = KIND[kind];
+  const edge = Math.floor(rand(S) * 4), u = rand(S);
+  let x, y;
+  if (edge === 0){ x = u * W; y = -16; }
+  else if (edge === 1){ x = W + 16; y = u * H; }
+  else if (edge === 2){ x = u * W; y = H + 16; }
+  else { x = -16; y = u * H; }
+  S.foes.push({kind, x, y, vx:0, vy:0, r:K.r, grazed:false,
+               dashT: K.dashEvery ? rand(S) * K.dashEvery : 0, winding:0, dashing:0});
+}
+
+function spawnShards(S, parent){
+  const n = KIND[parent.kind].splits || 0;
+  for (let i = 0; i < n; i++){
+    const a = rand(S) * 6.2832;
+    S.foes.push({kind:'shard', x:parent.x + Math.cos(a)*18, y:parent.y + Math.sin(a)*18,
+                 vx:Math.cos(a)*150, vy:Math.sin(a)*150, r:KIND.shard.r,
+                 grazed:true, dashT:0, winding:0, dashing:0});
+  }
+}
+
+function step(S, dt, input){
+  if (S.dead) return S;
+
+  /* caught, but with lives left: hold a beat, then run the level again from the top */
+  if (S.retryT > 0){
+    S.retryT -= dt;
+    if (S.retryT <= 0){
+      startLevel(S, S.level);
+      S.x = 80; S.y = 80; S.vx = 0; S.vy = 0;
+      S.motes.length = 0; S.moteIn = 0;
+      S.invulnT = 1.1;
+      S.windT = 0;
+    }
+    return S;
+  }
+
+  const slowing = S.slowT > 0 ? P.grazeSlowF : 1;
+  const sdt = dt * slowing;
+  S.t += sdt;
+  if (S.slowT > 0) S.slowT -= dt;
+  if (S.invulnT > 0) S.invulnT -= sdt;
+  if (S.shock){ S.shock.age += sdt; if (S.shock.age > 0.45) S.shock = null; }
+  if (S.popped.length){
+    for (const p of S.popped) p.age += sdt;
+    S.popped = S.popped.filter(p => p.age < 0.4);
+  }
+
+  if (S.phase === 'clear'){
+    S.breatherT -= sdt;
+    if (S.breatherT <= 0) startLevel(S, S.level + 1);
+  }
+
+  /* ---- discharge: the only way to kill, and the only way to bank ---- */
+  if (S.windT > 0){
+    S.windT -= sdt;
+    if (S.windT <= 0){
+      const c = S.charge, radius = shockR(c);
+      let kills = 0;
+      for (let i = S.foes.length - 1; i >= 0; i--){
+        const f = S.foes[i];
+        const dist = Math.hypot(f.x - S.x, f.y - S.y);
+        if (dist > radius) continue;
+        if (shielded(S, S.x, S.y, f.x, f.y)) continue;       // behind a block: spared
+        const K = KIND[f.kind];
+        if (K.armor && c < K.armor){                         // blast too weak to crack it
+          const d = dist || 1;
+          f.vx += (f.x - S.x)/d * P.shockPush * 0.6;
+          f.vy += (f.y - S.y)/d * P.shockPush * 0.6;
+          continue;
+        }
+        if (K.splits) spawnShards(S, f);
+        S.popped.push({x:f.x, y:f.y, col:K.col, age:0});
+        S.foes.splice(i, 1);
+        kills++;
+      }
+      for (const f of S.foes){                               // survivors get shoved
+        const d = Math.hypot(f.x - S.x, f.y - S.y) || 1;
+        if (d < radius * 1.5 && !shielded(S, S.x, S.y, f.x, f.y)){
+          const push = P.shockPush * (1 - d / (radius * 1.5));
+          f.vx += (f.x - S.x)/d * push; f.vy += (f.y - S.y)/d * push;
+          f.grazed = true;
+        }
+      }
+      const gain = Math.round(worth(c) * (1 + kills * P.killBonus));
+      S.score += gain; S.kills += kills; S.banks++;
+      if (gain > S.bestBlast) S.bestBlast = gain;
+      S.shock = {x:S.x, y:S.y, r:radius, age:0, kills};
+      S.charge = 0;
+      S.invulnT = P.invuln;
+    }
+  } else if (input.bank && S.charge > 0){
+    S.windT = P.windupBase + S.charge * P.windupPerCharge + S.charge * S.charge * P.windupQuad;
+  }
+
+  /* ---- you ---- */
+  const r = playerR(S.charge);
+  if (S.windT <= 0){
+    const m = Math.hypot(input.mx, input.my);
+    let sp = P.speed * (1 - Math.min(P.maxSlow, S.charge * P.slowPerCharge));
+    if (inField(S, S.x, S.y)) sp *= P.fieldSlow;
+    if (m > 0.01){ S.vx = input.mx/m * sp; S.vy = input.my/m * sp; }
+    else { S.vx = 0; S.vy = 0; }
+  } else { S.vx = 0; S.vy = 0; }
+  S.x = Math.max(r, Math.min(W - r, S.x + S.vx * sdt));
+  S.y = Math.max(r, Math.min(H - r, S.y + S.vy * sdt));
+  pushOutOfBlocks(S, S, r);
+
+  /* ---- them ---- */
+  const tier = Math.max(0, S.level - 1);
+  for (const f of S.foes){
+    const K = KIND[f.kind];
+    const dx = S.x - f.x, dy = S.y - f.y, dist = Math.hypot(dx, dy) || 1;
+    const home = K.home + r * 4.2 + tier * 4;
+    const cap  = K.speed + tier * 3.5;
+
+    if (K.dashEvery){
+      if (f.dashing > 0){
+        f.dashing -= sdt;                                    // committed: no steering, no drag
+      } else {
+        f.dashT -= sdt;
+        if (f.winding > 0){
+          f.winding -= sdt;
+          f.vx *= 0.86; f.vy *= 0.86;                        // coils up, then lets go
+          if (f.winding <= 0){
+            f.vx = dx/dist * K.dashSpeed;
+            f.vy = dy/dist * K.dashSpeed;
+            f.dashing = K.dashTime;
+          }
+        } else if (f.dashT <= 0 && dist < 520){
+          f.winding = K.dashWind; f.dashT = K.dashEvery;
+        } else {
+          f.vx += dx/dist * home * sdt; f.vy += dy/dist * home * sdt;
+        }
+      }
+    } else {
+      f.vx += dx/dist * home * sdt;
+      f.vy += dy/dist * home * sdt;
+    }
+
+    const damp = f.dashing > 0 ? 1 : Math.max(0, 1 - K.drag * sdt);
+    f.vx *= damp; f.vy *= damp;
+    const sp = Math.hypot(f.vx, f.vy);
+    const lim = (f.dashing > 0 || f.winding > 0) ? K.dashSpeed : cap;
+    if (sp > lim){ f.vx = f.vx/sp * lim; f.vy = f.vy/sp * lim; }
+    f.x += f.vx * sdt; f.y += f.vy * sdt;
+    pushOutOfBlocks(S, f, f.r);
+
+    const gap = Math.hypot(S.x - f.x, S.y - f.y) - r - f.r;
+    if (!f.grazed && gap > 0 && gap < P.grazeBand){
+      f.grazed = true; S.charge += P.grazeWorth; S.grazes++; S.slowT = P.grazeSlowT;
+    } else if (f.grazed && gap > P.grazeBand + 28){
+      f.grazed = false;
+    }
+    if (gap <= 0 && S.invulnT <= 0){
+      S.deaths++;
+      S.deathCharge = S.charge;      // what it cost, for the readout
+      S.lastLoss = S.charge;
+      S.lives--;
+      if (S.lives <= 0){ S.dead = true; return S; }
+      S.charge = 0;
+      S.foes.length = 0;
+      S.shock = null;
+      S.retryT = 1.15;
+      return S;
+    }
+  }
+
+  /* ---- motes ---- */
+  S.moteIn -= sdt;
+  if (S.moteIn <= 0 && S.motes.length < P.motesWanted){
+    S.moteIn = P.moteEvery;
+    for (let tries = 0; tries < 24; tries++){
+      const x = 40 + rand(S) * (W - 80), y = 40 + rand(S) * (H - 80);
+      if (Math.hypot(x - S.x, y - S.y) < 110) continue;
+      let bad = false;
+      for (const b of S.blocks)
+        if (x > b.x-16 && x < b.x+b.w+16 && y > b.y-16 && y < b.y+b.h+16){ bad = true; break; }
+      if (bad) continue;
+      S.motes.push({x, y, born:S.t});
+      break;
+    }
+  }
+  for (let i = S.motes.length - 1; i >= 0; i--){
+    const m = S.motes[i];
+    const dx = S.x - m.x, dy = S.y - m.y, d = Math.hypot(dx, dy) || 1;
+    if (d < P.magnet){                                  // they come to you once you are close
+      const pull = P.magnetPull * (1 - d / P.magnet);
+      m.x += dx/d * pull * sdt; m.y += dy/d * pull * sdt;
+    }
+    if (d < r + P.moteR){ S.motes.splice(i, 1); S.charge += P.moteWorth; }
+  }
+  if (S.charge > S.peakCharge) S.peakCharge = S.charge;
+
+  /* ---- the wave arrives whether or not you are killing it ---- */
+  if (S.phase === 'fight'){
+    S.spawnIn -= sdt;
+    if (S.spawnIn <= 0 && S.queue.length){
+      S.spawnIn = Math.max(P.spawnMin, P.spawnBase - S.level * P.spawnPerLevel)
+                / (1 + S.charge * P.spawnPerCharge);
+      spawnFoe(S, S.queue.shift());
+    }
+    if (!S.queue.length && !S.foes.length){
+      S.phase = 'clear';
+      S.breatherT = P.breather;
+    }
+  }
+
+  if (S.t > P.runCap) S.dead = true;
+  return S;
+}
+
+/* ========================== end sim core ========================== */
+
+/* ---------------------------------------------------------------- view */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+let S = newRun(1), state = 'menu', last = 0, shake = 0, flash = 0;
+let particles = [], best = 0, banner = null;
+let deepest = 1, runFrom = 1;                 // deepest level ever reached; where this run started
+
+function load(key, dflt){
+  try { const v = parseInt(localStorage.getItem(key) || '', 10); return isNaN(v) ? dflt : v; }
+  catch (e) { return dflt; }
+}
+function save(key, v){ try { localStorage.setItem(key, String(v)); } catch (e) {} }
+
+best = load('surge.best2', 0);
+deepest = Math.max(1, load('surge.maxlevel', 1));
+$('hBest').textContent = best.toLocaleString();
+
+function showPanel(which){
+  for (const id of ['panelMenu','panelLevels','panelOver'])
+    $(id).classList.toggle('on', id === which);
+  $('over').classList.remove('hide');
+  $('menuBest').textContent = best > 0
+    ? 'Best ' + best.toLocaleString() + ' · deepest level ' + deepest : '';
+}
+
+/* the level grid: everything you have reached, plus whatever the run generates past the authored
+   twelve. Starting deep is a difficulty choice, not a shortcut — score always begins at zero. */
+function buildLevels(){
+  const grid = $('lvlGrid');
+  grid.innerHTML = '';
+  const top = Math.max(12, deepest);
+  for (let n = 1; n <= top; n++){
+    const spec = levelSpec(n);
+    const open = n <= deepest;
+    const el = document.createElement('div');
+    el.className = 'lvlCard' + (open ? '' : ' locked');
+    const kinds = spec.wave.map(w => w[0]);
+    el.innerHTML = '<div class="n">Level ' + n + '</div>' +
+                   '<div class="nm">' + (open ? spec.name : 'Locked') + '</div>' +
+                   '<div class="kinds">' + kinds.map(k =>
+                     '<i style="background:' + KIND[k].col + '" title="' + k + '"></i>').join('') +
+                   '</div>';
+    if (open) el.onclick = () => { audioOn(); begin(n); };
+    grid.appendChild(el);
+  }
+}
+
+const held = {};
+let bankHeld = false;
+
+/* Touch is two gestures and nothing else: drag anywhere to steer, double tap to discharge.
+   The stick is relative rather than follow-the-finger, so your thumb is never sitting on top of
+   the thing you are trying to watch — which matters here, because the ship grows. */
+const TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const STICK_R = 68;
+const stick = {on:false, ox:0, oy:0, ax:0, ay:0};
+let lastTapAt = 0, lastTapX = 0, lastTapY = 0;
+
+const BESTIARY = [
+  ['#ff4d6d','Hunter','comes straight for you'],
+  ['#ff9b3d','Darter','winds up, then dashes in a line'],
+  ['#c46dff','Splitter','bursts into shards when killed'],
+  ['#7ae6ff','Warden','armoured — needs a blast of 14+']
+];
+$('ovBest').innerHTML = BESTIARY.map(b =>
+  '<span><b style="color:' + b[0] + '">' + b[1] + '</b> ' + b[2] + '</span>').join('');
+
+function begin(from){
+  runFrom = Math.max(1, from || 1);
+  S = newRun((Math.random() * 4294967295) >>> 0, runFrom);
+  particles = []; banner = null;
+  state = 'run';
+  $('over').classList.add('hide');
+  last = performance.now();
+}
+
+function die(){
+  state = 'over';
+  shake = 1; flash = 1;
+  const lost = worth(S.deathCharge);
+  const rec = S.score > best;
+  if (S.level > deepest){ deepest = S.level; save('surge.maxlevel', deepest); }
+  if (rec){
+    best = S.score;
+    save('surge.best2', best);
+    $('hBest').textContent = best.toLocaleString();
+  }
+  $('ovTitle').textContent = 'Run over on level ' + S.level;
+  $('ovScore').textContent = S.score.toLocaleString();
+  $('ovLost').innerHTML = S.deathCharge > 0
+    ? 'Carrying <b>' + S.deathCharge + ' charge</b> — ' + lost.toLocaleString() + ' points, gone.'
+    : 'Nothing in hand, at least.';
+  $('ovRec').textContent = rec ? '★ New best' : '';
+  $('ovHint').innerHTML = 'reached level ' + S.level + ' · ' + S.kills + ' killed · best blast ' +
+    S.bestBlast.toLocaleString() + ' · peak charge ' + S.peakCharge +
+    '<br><b>Press any key</b> to start a new run.';
+  $('ovBtn').textContent = runFrom > 1 ? 'Again from ' + runFrom : 'Again';
+  showPanel('panelOver');
+}
+
+/* -------------------------------------------------------------- audio */
+let actx = null, hum = null, humGain = null, humFilter = null;
+function audioOn(){
+  if (actx){ if (actx.state === 'suspended') actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  humGain = actx.createGain(); humGain.gain.value = 0;
+  humFilter = actx.createBiquadFilter(); humFilter.type = 'lowpass'; humFilter.frequency.value = 1400;
+  hum = actx.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 70;
+  hum.connect(humFilter); humFilter.connect(humGain); humGain.connect(actx.destination);
+  hum.start();
+}
+function humUpdate(){
+  if (!actx) return;
+  if (state !== 'run'){ humGain.gain.setTargetAtTime(0, actx.currentTime, 0.1); return; }
+  const c = S.charge;
+  hum.frequency.setTargetAtTime(62 + c * 7.5, actx.currentTime, 0.08);
+  humFilter.frequency.setTargetAtTime(700 + c * 90, actx.currentTime, 0.1);
+  humGain.gain.setTargetAtTime(Math.min(0.13, 0.012 + c * 0.0032), actx.currentTime, 0.12);
+}
+function blip(freq, dur, type, vol){
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+  o.type = type || 'square'; o.frequency.value = freq;
+  g.gain.value = 0; o.connect(g); g.connect(actx.destination);
+  g.gain.linearRampToValueAtTime(vol || 0.07, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function thump(c, kills){
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+  o.type = 'sine';
+  o.frequency.setValueAtTime(170 + c * 4, t);
+  o.frequency.exponentialRampToValueAtTime(36, t + 0.55);
+  g.gain.setValueAtTime(0.3, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+  o.connect(g); g.connect(actx.destination);
+  o.start(t); o.stop(t + 0.65);
+  for (let i = 0; i < kills; i++) setTimeout(() => blip(660 + i * 90, 0.07, 'square', 0.05), i * 55);
+}
+
+function burst(x, y, n, col, spd){
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * 6.2832, s = spd * (0.35 + Math.random() * 0.9);
+    particles.push({x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.5 + Math.random()*0.4, age:0, col});
+  }
+}
+
+/* -------------------------------------------------------------- input */
+function readInput(){
+  let mx = 0, my = 0;
+  if (held.left) mx--; if (held.right) mx++;
+  if (held.up) my--; if (held.down) my++;
+  if (!mx && !my && stick.on){ mx = stick.ax; my = stick.ay; }
+  const bank = bankHeld; bankHeld = false;
+  return {mx, my, bank};
+}
+const KEYS = { ArrowLeft:'left', a:'left', A:'left', ArrowRight:'right', d:'right', D:'right',
+               ArrowUp:'up', w:'up', W:'up', ArrowDown:'down', s:'down', S:'down' };
+addEventListener('keydown', e => {
+  audioOn();
+  if (state !== 'run'){
+    if (e.key === 'Tab') return;
+    if ($('panelOver').classList.contains('on')){    // fast retry straight off the death card
+      e.preventDefault();
+      if (e.key === 'Escape' || e.key === 'm' || e.key === 'M') showPanel('panelMenu');
+      else begin(runFrom);
+    } else if ($('panelMenu').classList.contains('on') && (e.key === 'Enter' || e.key === ' ')){
+      e.preventDefault(); begin(1);
+    }
+    return;
+  }
+  if (KEYS[e.key]){ e.preventDefault(); held[KEYS[e.key]] = true; return; }
+  if (e.key === ' '){ e.preventDefault(); bankHeld = true; }
+});
+addEventListener('keyup', e => { if (KEYS[e.key]) held[KEYS[e.key]] = false; });
+function pt(e){
+  const r = cv.getBoundingClientRect();
+  return {x:(e.clientX - r.left) * W / r.width, y:(e.clientY - r.top) * H / r.height};
+}
+cv.addEventListener('pointerdown', e => {
+  audioOn();
+  if (state !== 'run'){
+    if ($('panelOver').classList.contains('on')) begin(runFrom);
+    return;
+  }
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  const p = pt(e);
+
+  const now = performance.now();
+  if (now - lastTapAt < 340 && Math.hypot(p.x - lastTapX, p.y - lastTapY) < 70){
+    bankHeld = true;                       // second tap of a pair: let go of the charge
+    lastTapAt = 0;
+  } else {
+    lastTapAt = now; lastTapX = p.x; lastTapY = p.y;
+  }
+
+  stick.on = true; stick.ox = p.x; stick.oy = p.y; stick.ax = 0; stick.ay = 0;
+});
+cv.addEventListener('pointermove', e => {
+  if (!stick.on) return;
+  e.preventDefault();
+  const p = pt(e);
+  let dx = p.x - stick.ox, dy = p.y - stick.oy;
+  const d = Math.hypot(dx, dy);
+  if (d < 5){ stick.ax = 0; stick.ay = 0; return; }
+  if (d > STICK_R){                        // let the ring trail a long drag
+    stick.ox = p.x - dx/d * STICK_R;
+    stick.oy = p.y - dy/d * STICK_R;
+  }
+  const m = Math.min(1, d / STICK_R);
+  stick.ax = dx/d * m; stick.ay = dy/d * m;
+});
+['pointerup','pointercancel'].forEach(ev =>
+  cv.addEventListener(ev, () => { stick.on = false; stick.ax = 0; stick.ay = 0; }));
+$('btnPlay').onclick   = () => { audioOn(); begin(1); };
+$('btnLevels').onclick = () => { audioOn(); buildLevels(); showPanel('panelLevels'); };
+$('btnBackMenu').onclick = () => showPanel('panelMenu');
+$('ovBtn').onclick     = () => { audioOn(); begin(runFrom); };
+$('ovMenu').onclick    = () => showPanel('panelMenu');
+
+/* --------------------------------------------------------------- loop */
+function frame(now){
+  const dt = Math.min(0.033, (now - last) / 1000 || 0);
+  last = now;
+
+  if (state === 'run'){
+    const b4 = {banks:S.banks, grazes:S.grazes, motes:S.motes.length, level:S.level,
+                c:S.charge, deaths:S.deaths};
+    step(S, dt, readInput());
+
+    if (S.grazes > b4.grazes){
+      burst(S.x, S.y, 5, '#8fffc2', 130);
+      blip(880 + Math.min(600, S.charge * 14), 0.06, 'square', 0.05);
+    }
+    if (S.motes.length < b4.motes){
+      burst(S.x, S.y, 8, '#ffd24a', 150);
+      blip(520 + Math.min(700, S.charge * 12), 0.07, 'triangle', 0.06);
+    }
+    if (S.banks > b4.banks){
+      shake = 1;
+      const k = S.shock ? S.shock.kills : 0;
+      thump(b4.c, k);
+      burst(S.x, S.y, 30 + k * 6, '#7ae6ff', 320);
+      for (const p of S.popped) burst(p.x, p.y, 10, p.col, 200);
+      if (k > 0) banner = {text:k + ' KILLED  ×' + (1 + k * P.killBonus).toFixed(1), age:0, col:'#7ae6ff'};
+    }
+    if (S.level > b4.level) banner = {text:'LEVEL ' + S.level + ' — ' + S.levelName, age:0, col:'#8fffc2'};
+    if (S.deaths > b4.deaths){
+      shake = 1; flash = 1;
+      burst(S.x, S.y, 46, '#ff4d6d', 300);
+      blip(150, 0.5, 'sawtooth', 0.13);
+    }
+    if (S.dead) die();
+    humUpdate();
+
+    $('hLevel').textContent = S.level;
+    $('hScore').textContent = S.score.toLocaleString();
+    $('hCharge').textContent = S.charge;
+    $('hCarry').textContent = worth(S.charge).toLocaleString();
+    $('hLeft').textContent = S.foes.length + S.queue.length;
+    $('hLives').textContent = '●'.repeat(Math.max(0, S.lives)) + '○'.repeat(Math.max(0, 3 - S.lives));
+  }
+
+  for (const p of particles){ p.age += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.94; p.vy *= 0.94; }
+  particles = particles.filter(p => p.age < p.life);
+  if (banner){ banner.age += dt; if (banner.age > 1.6) banner = null; }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* --------------------------------------------------------------- draw */
+function draw(){
+  ctx.save();
+  if (shake > 0){
+    ctx.translate((Math.random()-.5)*16*shake, (Math.random()-.5)*16*shake);
+    shake = Math.max(0, shake - 0.055);
+  }
+  ctx.fillStyle = '#05040a'; ctx.fillRect(-30, -30, W+60, H+60);
+  ctx.strokeStyle = 'rgba(120,110,180,.055)'; ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += 45){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 45){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  const c = S.charge, r = playerR(c);
+
+  for (const f of S.fields){
+    const g = ctx.createRadialGradient(f.x, f.y, f.r*0.2, f.x, f.y, f.r);
+    g.addColorStop(0, 'rgba(150,90,255,.20)');
+    g.addColorStop(1, 'rgba(150,90,255,.03)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = 'rgba(170,120,255,.30)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.stroke();
+  }
+  for (const b of S.blocks){
+    ctx.fillStyle = '#171332';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = '#332a5e'; ctx.lineWidth = 2;
+    ctx.strokeRect(b.x+1, b.y+1, b.w-2, b.h-2);
+  }
+
+  const vig = ctx.createRadialGradient(W/2, H/2, Math.max(40, 300 - c*3.4), W/2, H/2, 620);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(255,60,90,' + Math.min(0.35, 0.05 + c*0.006).toFixed(3) + ')');
+  ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
+  for (const m of S.motes){
+    const pulse = 1 + Math.sin((S.t - m.born) * 7) * 0.14;
+    ctx.fillStyle = 'rgba(255,210,74,.18)';
+    ctx.beginPath(); ctx.arc(m.x, m.y, 15*pulse, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#ffd24a';
+    ctx.beginPath(); ctx.arc(m.x, m.y, P.moteR, 0, 6.2832); ctx.fill();
+  }
+
+  if (S.shock){
+    const k = S.shock.age / 0.45;
+    ctx.strokeStyle = 'rgba(122,230,255,' + (1-k).toFixed(3) + ')';
+    ctx.lineWidth = 8*(1-k) + 1;
+    ctx.beginPath(); ctx.arc(S.shock.x, S.shock.y, S.shock.r*(0.25 + k*0.85), 0, 6.2832); ctx.stroke();
+  }
+
+  for (const f of S.foes){
+    const K = KIND[f.kind];
+    if (f.winding > 0){                                    // the tell before a dash
+      const a = Math.atan2(S.y - f.y, S.x - f.x);
+      ctx.strokeStyle = 'rgba(255,155,61,.30)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.x + Math.cos(a)*520, f.y + Math.sin(a)*520); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,155,61,.85)';
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 8 + f.winding*22, 0, 6.2832); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.05)';
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 7, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = K.col;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+    if (K.armor){
+      ctx.strokeStyle = c >= K.armor ? '#8fffc2' : 'rgba(255,255,255,.55)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 5, 0, 6.2832); ctx.stroke();
+      ctx.fillStyle = '#05040a';
+      ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(K.armor), f.x, f.y + 1);
+    }
+    if (f.kind === 'splitter'){
+      ctx.strokeStyle = 'rgba(5,4,10,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(f.x - f.r*0.6, f.y); ctx.lineTo(f.x + f.r*0.6, f.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(f.x, f.y - f.r*0.6); ctx.lineTo(f.x, f.y + f.r*0.6); ctx.stroke();
+    }
+  }
+
+  for (const p of S.popped){
+    const k = p.age / 0.4;
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = p.col; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 10 + k*26, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (const p of particles){
+    ctx.globalAlpha = 1 - p.age/p.life;
+    ctx.fillStyle = p.col; ctx.fillRect(p.x-2, p.y-2, 4, 4);
+    ctx.globalAlpha = 1;
+  }
+
+  if (S.windT > 0){
+    const k = 1 - S.windT / (P.windupBase + 0.001);
+    ctx.strokeStyle = 'rgba(122,230,255,.85)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(S.x, S.y, r + 6 + Math.max(0,k)*26, 0, 6.2832); ctx.stroke();
+    ctx.strokeStyle = 'rgba(122,230,255,.22)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(S.x, S.y, shockR(S.charge), 0, 6.2832); ctx.stroke();
+  }
+  ctx.shadowBlur = 22; ctx.shadowColor = 'rgba(255,210,74,' + Math.min(0.95, 0.3 + c*0.02) + ')';
+  ctx.fillStyle = S.invulnT > 0 ? '#ffffff' : '#ffd24a';
+  ctx.beginPath(); ctx.arc(S.x, S.y, r, 0, 6.2832); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#07060d';
+  ctx.beginPath(); ctx.arc(S.x, S.y, Math.max(3, r*0.34), 0, 6.2832); ctx.fill();
+  if (c > 0){
+    ctx.fillStyle = 'rgba(7,6,13,.85)';
+    ctx.font = '700 ' + Math.max(11, Math.min(20, r*0.8)) + 'px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(c), S.x, S.y + 1);
+  }
+
+  if (S.retryT > 0){
+    ctx.fillStyle = 'rgba(255,77,109,.10)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff4d6d';
+    ctx.font = '700 30px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('CAUGHT', W/2, H/2 - 26);
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = '600 16px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillText(S.lastLoss > 0
+      ? 'dropped ' + S.lastLoss + ' charge — ' + worth(S.lastLoss).toLocaleString() + ' points'
+      : 'nothing in hand', W/2, H/2 + 4);
+    ctx.fillStyle = '#8fffc2';
+    ctx.font = '600 14px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillText('level ' + S.level + ' again — ' + S.lives + ' live' + (S.lives === 1 ? '' : 's') + ' left',
+                 W/2, H/2 + 30);
+  }
+  if (S.phase === 'clear'){
+    ctx.fillStyle = 'rgba(143,255,194,.06)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(143,255,194,.9)';
+    ctx.font = '700 15px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('LEVEL CLEAR — bank it now, or carry it in', W/2, 40);
+  }
+  if (banner){
+    const a = banner.age < 1.2 ? 1 : 1 - (banner.age - 1.2) / 0.4;
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.fillStyle = banner.col;
+    ctx.font = '700 26px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(banner.text, W/2, H/2 - 90);
+    ctx.globalAlpha = 1;
+  }
+  if (stick.on && state === 'run'){
+    ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(stick.ox, stick.oy, STICK_R, 0, 6.2832); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath();
+    ctx.arc(stick.ox + stick.ax*STICK_R, stick.oy + stick.ay*STICK_R, 22, 0, 6.2832);
+    ctx.fill();
+  }
+  if (flash > 0){
+    ctx.fillStyle = 'rgba(255,255,255,' + (flash*0.5).toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+    flash = Math.max(0, flash - 0.06);
+  }
+  ctx.restore();
+}
+
+showPanel('panelMenu');
+</script>
+</body>
+</html>

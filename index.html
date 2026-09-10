@@ -312,7 +312,7 @@
 
   <div class="modeGrid">
     <div class="modeCard" data-go="sim"><span class="badge">SOLO</span><div class="ico">🃏</div><h3>TABLE SIM</h3><p>Full blackjack. Count stays hidden — you keep it. Bet with chips, split, double. Toggle <b>Reveal</b> for training wheels or <b>Pop Quiz</b> for surprise count checks.</p></div>
-    <div class="modeCard" data-go="games"><span class="badge">4 GAMES</span><div class="ico">🕹️</div><h3>THE CABINETS</h3><p>Four games that are not blackjack. Hide in moving shadows, tune a wave by ear, drive four walkers with one key, hang a mobile until it sits level.</p></div>
+    <div class="modeCard" data-go="games"><span class="badge">5 GAMES</span><div class="ico">🕹️</div><h3>THE CABINETS</h3><p>Five games that are not blackjack. Hide in moving shadows, tune a wave by ear, drive four walkers with one key, hang a mobile until it sits level, hoard charge you might not live to bank.</p></div>
     <div class="modeCard" data-go="speed"><span class="badge">SOLO</span><div class="ico">⚡</div><h3>SPEED DRILL</h3><p>Pure counting. Cards blast past, no game. Call the final count. Timed &amp; scored.</p></div>
   </div>
 
@@ -432,7 +432,7 @@
   <div id="gamesHub">
     <div class="hero">
       <div class="logo">THE <b>CABINETS</b></div>
-      <div class="sub">▶ FOUR GAMES · PICK ONE ◀</div>
+      <div class="sub">▶ FIVE GAMES · PICK ONE ◀</div>
       <div class="credits">CREDITS: FREE PLAY</div>
     </div>
     <div class="gameGrid" id="gameGrid"></div>
@@ -674,6 +674,8 @@ const CABINETS = [
     blurb:'One key moves everybody. Each walker reads your direction through its own rotation, so up sends one north and another east.' },
   { file:'plumb.html', ico:'⚖️', name:'PLUMB', badge:'6 MOBILES',
     blurb:'Hang the missing weights so every bar hangs level. Weight times arm, both sides, all the way up.' },
+  { file:'surge.html', ico:'⚡', name:'SURGE', badge:'ENDLESS',
+    blurb:'Charge is your score, your body and your only weapon. Hold more and you grow bigger, slower and more hunted. Discharge to bank it — die first and it is gone.' },
 ];
 
 function initGames(){
